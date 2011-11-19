@@ -1,0 +1,29 @@
+Identifier = "LootSorter"
+
+Version = "VERSION"
+
+Email = "seebs@seebs.net"
+
+Dependencies = {
+	LibGetOpt = { "required", "before" },
+	LibBaggotry  = { "required", "before" },
+}
+Embed = { LibGetOpt = true, LibBaggotry = true }
+
+Name = {
+  English = "LootSorter",
+  French = "LootSorter",
+  German = "LootSorter",
+}
+NameShort = "LootSorter"
+
+Description = {
+  English = "It's /ls."
+}
+
+RunOnStartup = {
+  "LootSorter.lua"
+}
+
+Environment = { "1.6" }
+

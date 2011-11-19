@@ -1,2 +1,5 @@
+2011/11/19:
+	* Functional enough to be worth showing people.
+
 2011/11/18:
 	* Started new toy

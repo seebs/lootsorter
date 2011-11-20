@@ -24,11 +24,6 @@ Options:
 	-q quality
 		Show items of quality; default relation is >= rather
 		than ==.
-	-r
-		Qualifiers are requirements; all must be met
-	-x
-		Qualifiers are exclusions; anything matching them
-		is rejected.
 
 Words that aren't attached to options:
 	If there's no colons, it's treated as a name match; note
@@ -43,3 +38,6 @@ Words that aren't attached to options:
 		attribute:relop:value
 	where relop is something like ">" or "==".  If you don't
 	specify one, the default is ==.
+
+On category, quality, and general matches, a leading + or ! means that
+the value is interpreted as a requirement or exclusion, respectively.

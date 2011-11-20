@@ -31,15 +31,6 @@ function ls.variables_loaded(name)
   end
 end
 
-function ls.strsplit(s, p)
-  local idx = string.find(s, p)
-  if idx then
-    return s.sub(s, 1, idx - 1), ls.strsplit(string.sub(s, idx + 1), p)
-  else
-    return s
-  end
-end
-
 ls.columns = {
   { name = 'Name', key = 'name', width = 200 },
   { name = 'Qty', key = 'qty', width = 70 },
@@ -433,10 +424,8 @@ function ls.dump(filter)
 end
 
 function ls.slashcommand(args)
-  local stack = false
-  local slotspecs = {}
   local filter = lbag.filter()
-  local stack_size = nil
+  local dump = false
   if not args then
     return
   end
@@ -449,78 +438,21 @@ function ls.slashcommand(args)
     ls.window:SetVisible(false)
     return
   end
-
-  if args['x'] then
-    filtery = function(...) filter:exclude(...) end
-  else
-    if args['r'] then
-      filtery = function(...) filter:require(...) end
-    else
-      filtery = function(...) filter:include(...) end
-    end
-  end
-
-  if args['b'] then
-    table.insert(slotspecs, Utility.Item.Slot.Bank())
-  end
-  if args['e'] then
-    table.insert(slotspecs, Utility.Item.Slot.Equipment())
-  end
-  if args['i'] then
-    table.insert(slotspecs, Utility.Item.Slot.Inventory())
-  end
-  if args['w'] then
-    table.insert(slotspecs, Utility.Item.Slot.Wardrobe())
-  end
-
-  if table.getn(slotspecs) == 0 then
-    table.insert(slotspecs, Utility.Item.Slot.Bank())
-    table.insert(slotspecs, Utility.Item.Slot.Inventory())
-  end
-
-  if args['c'] then
-    filtery('category', args['c'])
-  end
-  if args['C'] then
-    local newspec = {}
-    if string.match(args['C'], '/') then
-      charspec = args['C']
-    else
-      charspec = lbag.char_identifier(args['C'])
-    end
-    for i, v in ipairs(slotspecs) do
-      local slotspec, _ = lbag.slotspec_p(v)
-      if not slotspec then
-        table.insert(newspec, string.format("%s:%s", charspec, Utility.Item.Slot.Inventory()))
-        table.insert(newspec, string.format("%s:%s", charspec, Utility.Item.Slot.Bank()))
-      else
-        table.insert(newspec, string.format("%s:%s", charspec, slotspec))
-      end
-    end
-    filter:slot(unpack(newspec))
-  else
-    filter:slot(unpack(slotspecs))
-  end
-  if args['q'] then
-    if lbag.rarity_p(args['q']) then
-      filtery('rarity', '>=', args['q'])
-    else
-      ls.printf("Error: '%s' is not a valid rarity.", args['q'])
-    end
-  end
-  for _, word in pairs(args['leftover_args']) do
-    if string.match(word, ':') then
-      filtery(ls.strsplit(word, ':'))
-    else
-      filtery('name', word)
-    end
-  end
   if args['t'] then
     ls.combine_totals = true
   else
     ls.combine_totals = false
   end
+  args['t'] = nil
+
   if args['D'] then
+    dump = true
+    args['D'] = nil
+  end
+
+  filter:from_args(args)
+
+  if dump then
     filter:dump()
     return
   end
@@ -534,4 +466,4 @@ table.insert(Event.Item.Slot, { ls.refresh, "LootSorter", "LootSorter refresh" }
 table.insert(Event.Item.Update, { ls.refresh, "LootSorter", "LootSorter refresh" })
 table.insert(Event.Addon.SavedVariables.Load.End, { ls.variables_loaded, "LootSorter", "variable loaded hook" })
 
-Library.LibGetOpt.makeslash("bc:C:Dehiq:rtvwx", "LootSorter", "ls", ls.slashcommand)
+Library.LibGetOpt.makeslash(lbag.filter():argstring() .. "Dhtv", "LootSorter", "ls", ls.slashcommand)

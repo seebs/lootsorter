@@ -10,6 +10,8 @@
 	* Add close button
 	* Save window position
 	* Call this 0.3
+	* Move argument processing into LibBaggotry.
+	* Call this 0.4
 
 2011/11/19:
 	* Functional enough to be worth showing people.

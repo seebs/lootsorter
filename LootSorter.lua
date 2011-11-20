@@ -18,14 +18,24 @@ ls.item_count = 0
 ls.item_ordered = {}
 ls.order_asc = true
 ls.selected = nil
+ls.current_filter = nil
 
 function ls.printf(fmt, ...)
   print(string.format(fmt or 'nil', ...))
 end
 
+function ls.strsplit(s, p)
+  local idx = string.find(s, p)
+  if idx then
+    return s.sub(s, 1, idx - 1), ls.strsplit(string.sub(s, idx + 1), p)
+  else
+    return s
+  end
+end
+
 ls.columns = {
   { name = 'Name', key = 'name', width = 200 },
-  { name = 'Qty', key = 'qty', width = 35 },
+  { name = 'Qty', key = 'qty', width = 70 },
   { name = 'Rarity', key = 'rarity', width = 75 },
   { name = 'Location', key = 'loc', width = 100 },
   { name = 'Owner', key = 'owner', width = 150 },
@@ -128,6 +138,8 @@ function ls.makewindow()
   ls.scrollbar:SetPoint("BOTTOMRIGHT", ls.window, "BOTTOMRIGHT", -2 + r * -1, -2 + b * -1)
   -- only active when there is scrolletry to do
   ls.scrollbar:SetEnabled(false)
+  ls.scrollbar:SetRange(0, 1)
+  ls.scrollbar:SetPosition(0)
   ls.scrollbar.Event.ScrollbarChange = ls.show_items
   ls.window.Event.WheelBack = function() ls.scrollbar:Nudge(3) end
   ls.window.Event.WheelForward = function() ls.scrollbar:Nudge(-3) end
@@ -166,10 +178,10 @@ function ls.display_loc(frame, item)
       local type, p1, p2 = Utility.Item.Slot.Parse(item._slotspec)
       loc = type
     else
-      loc = "???"
+      loc = item._slotspec
     end
   else
-    loc = "??"
+    loc = "<Unknown>"
   end
   frame:SetText(loc)
   frame:SetFontColor(0.98, 0.98, 0.98)
@@ -182,7 +194,10 @@ function ls.display_name(frame, item)
 end
 
 function ls.display_owner(frame, item)
-  local owner = string.match(item._charspec or "--", '.*/(.*)') or "--"
+  local owner, suffix
+  owner = item._charspec or "--"
+  suffix = string.match(owner, '.*/(.*)')
+  owner = suffix or owner
   frame:SetText(owner)
   if owner == '--' then
     frame:SetFontColor(0.5, 0.5, 0.5)
@@ -199,8 +214,8 @@ end
 
 function ls.display_qty(frame, item)
   local x
-  if item.stack then
-    x = string.format("%d", item.stack)
+  if item.stackMax then
+    x = string.format("%d/%d", item.stack, item.stackMax)
   else
     x = ""
   end
@@ -216,20 +231,39 @@ ls.display_funcs = {
   rarity = ls.display_rarity,
 }
 
-function ls.order_qty(a, b)
-  local acmp, bcmp
-  a = ls.item_list[a]
-  b = ls.item_list[b]
-  acmp = a and (a.stack or 1) or 0
-  bcmp = b and (b.stack or 1) or 0
+function ls.order_generic(acmp, bcmp, invert)
   if acmp == bcmp then
     return false
   end
-  if acmp > bcmp then
+  local c = acmp < bcmp
+  if invert then
+    c = not c
+  end
+  if c then
     return ls.order_asc
   else
     return not ls.order_asc
   end
+end
+
+function ls.order_qty_calc(item)
+  if not item then
+    return 0
+  end
+  if item.stackMax then
+    return item.stack or 1
+  else
+    return 0
+  end
+end
+
+function ls.order_qty(a, b)
+  local acmp, bcmp
+  a = ls.item_list[a]
+  b = ls.item_list[b]
+  acmp = ls.order_qty_calc(a)
+  bcmp = ls.order_qty_calc(b)
+  return ls.order_generic(acmp, bcmp, true)
 end
 
 function ls.order_owner(a, b)
@@ -238,14 +272,7 @@ function ls.order_owner(a, b)
   b = ls.item_list[b]
   acmp = a and (a._charspec or "") or ""
   bcmp = b and (b._charspec or "") or ""
-  if acmp == bcmp then
-    return false
-  end
-  if acmp < bcmp then
-    return ls.order_asc
-  else
-    return not ls.order_asc
-  end
+  return ls.order_generic(acmp, bcmp)
 end
 
 function ls.order_name(a, b)
@@ -254,14 +281,7 @@ function ls.order_name(a, b)
   b = ls.item_list[b]
   acmp = a and (a.name or "") or ""
   bcmp = b and (b.name or "") or ""
-  if acmp == bcmp then
-    return false
-  end
-  if acmp < bcmp then
-    return ls.order_asc
-  else
-    return not ls.order_asc
-  end
+  return ls.order_generic(acmp, bcmp)
 end
 
 function ls.order_rarity(a, b)
@@ -270,14 +290,7 @@ function ls.order_rarity(a, b)
   b = ls.item_list[b]
   acmp = a and (lbag.rarity_p(a.rarity)) or 0
   bcmp = b and (lbag.rarity_p(b.rarity)) or 0
-  if acmp == bcmp then
-    return false
-  end
-  if acmp > bcmp then
-    return ls.order_asc
-  else
-    return not ls.order_asc
-  end
+  return ls.order_generic(acmp, bcmp, true)
 end
 
 function ls.order_loc(a, b)
@@ -286,14 +299,7 @@ function ls.order_loc(a, b)
   b = ls.item_list[b]
   acmp = a and (a._slotspec) or ""
   bcmp = b and (b._slotspec) or ""
-  if acmp == bcmp then
-    return false
-  end
-  if acmp < bcmp then
-    return ls.order_asc
-  else
-    return not ls.order_asc
-  end
+  return ls.order_generic(acmp, bcmp)
 end
 
 ls.order_funcs = {
@@ -361,8 +367,20 @@ function ls.reorder()
   table.sort(ls.item_ordered, ls.order)
 end
 
+function ls.refresh()
+  ls.dump()
+end
+
 function ls.dump(filter)
+  if filter then
+    ls.current_filter = filter
+  else
+    filter = ls.current_filter
+  end
   ls.item_list = filter:find()
+  if ls.combine_totals then
+    ls.item_list = lbag.merge_items(ls.item_list)
+  end
   ls.item_count = 0
   ls.item_ordered = {}
   for k, v in pairs(ls.item_list) do
@@ -374,31 +392,42 @@ function ls.dump(filter)
   -- ensure window is available
   ls.makewindow()
 
-  if ls.item_count > ls.item_lines then
-    ls.scrollbar:SetEnabled(true)
-  else
-    ls.scrollbar:SetEnabled(false)
+  local max = ls.item_count - ls.item_lines
+  local _, sbmax = ls.scrollbar:GetRange()
+  local relative = ls.scrollbar:GetPosition() / sbmax
+  -- ls.printf("relative position: %d/%d => %f", ls.scrollbar:GetPosition(), sbmax, relative)
+  if relative > 1 then
+    relative = 1
   end
-  if ls.item_count > ls.item_lines then
-    ls.scrollbar:SetRange(0, ls.item_count - ls.item_lines)
+  if max > 0 then
+    ls.scrollbar:SetEnabled(true)
+    ls.scrollbar:SetRange(0, max)
     ls.scrollbar:SetThickness(ls.item_lines)
   else
+    max = 0
+    ls.scrollbar:SetEnabled(false)
     ls.scrollbar:SetRange(0, 1)
     ls.scrollbar:SetThickness(1)
   end
-  ls.scrollbar:SetPosition(1)
+  ls.scrollbar:SetPosition(math.floor(relative * max))
   ls.show_items()
 end
 
 function ls.slashcommand(args)
   local stack = false
+  local slotspecs = {}
   local filter = lbag.filter()
   local stack_size = nil
   if not args then
     return
   end
+
   if args['v'] then
-    bag.printf("version %s", bag.version)
+    ls.printf("version %s", ls.version)
+    return
+  end
+  if args['h'] then
+    ls.window:SetVisible(false)
     return
   end
 
@@ -412,18 +441,35 @@ function ls.slashcommand(args)
     end
   end
 
+  if args['b'] then
+    table.insert(slotspecs, Utility.Item.Slot.Bank())
+  end
+  if args['e'] then
+    table.insert(slotspecs, Utility.Item.Slot.Equipment())
+  end
+  if args['i'] then
+    table.insert(slotspecs, Utility.Item.Slot.Inventory())
+  end
+  if args['w'] then
+    table.insert(slotspecs, Utility.Item.Slot.Wardrobe())
+  end
+
+  if table.getn(slotspecs) == 0 then
+    table.insert(slotspecs, Utility.Item.Slot.Bank())
+    table.insert(slotspecs, Utility.Item.Slot.Inventory())
+  end
+
   if args['c'] then
     filtery('category', args['c'])
   end
   if args['C'] then
-    local spec = filter:slot()
     local newspec = {}
     if string.match(args['C'], '/') then
       charspec = args['C']
     else
       charspec = lbag.char_identifier(args['C'])
     end
-    for i, v in ipairs(spec) do
+    for i, v in ipairs(slotspecs) do
       local slotspec, _ = lbag.slotspec_p(v)
       if not slotspec then
         table.insert(newspec, string.format("%s:%s", charspec, Utility.Item.Slot.Inventory()))
@@ -433,44 +479,30 @@ function ls.slashcommand(args)
       end
     end
     filter:slot(unpack(newspec))
+  else
+    filter:slot(unpack(slotspecs))
   end
   if args['q'] then
     if lbag.rarity_p(args['q']) then
-      filtery('>=', 'rarity', args['q'])
+      filtery('rarity', '>=', args['q'])
     else
-      bag.printf("Error: '%s' is not a valid rarity.", args['q'])
+      ls.printf("Error: '%s' is not a valid rarity.", args['q'])
     end
   end
   for _, word in pairs(args['leftover_args']) do
     if string.match(word, ':') then
-      filtery(bag.strsplit(word, ':'))
+      filtery(ls.strsplit(word, ':'))
     else
       filtery('name', word)
     end
   end
-
+  if args['t'] then
+    ls.combine_totals = true
+  else
+    ls.combine_totals = false
+  end
   if args['D'] then
     filter:dump()
-    return
-  end
-  if args['s'] then
-    local total, count
-
-    total, count = lbag.iterate(filter, valuation)
-
-    local silver = total % 100
-    local gold = math.floor(total / 100)
-    local plat = math.floor(gold / 100)
-    gold = gold % 100
-    if plat > 0 then
-      bag.printf("%d item(s), total value: %dp%dg%ds.", count, plat, gold, silver)
-    elseif gold > 0 then
-      bag.printf("%d item(s), total value: %dg%ds.", count, gold, silver)
-    elseif silver > 0 then
-      bag.printf("%d item(s), total value: %ds.", count, silver)
-    else
-      bag.printf("Total value: none.")
-    end
     return
   end
   ls.dump(filter)
@@ -479,4 +511,7 @@ end
 ls.ui = UI.CreateContext("LootSorter")
 ls.ui:SetVisible(false)
 
-Library.LibGetOpt.makeslash("c:C:Dq:rsvx", "LootSorter", "ls", ls.slashcommand)
+table.insert(Event.Item.Slot, { ls.refresh, "LootSorter", "LootSorter refresh" })
+table.insert(Event.Item.Update, { ls.refresh, "LootSorter", "LootSorter refresh" })
+
+Library.LibGetOpt.makeslash("bc:C:Dehiq:rtvwx", "LootSorter", "ls", ls.slashcommand)

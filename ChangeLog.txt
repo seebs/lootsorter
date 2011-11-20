@@ -1,3 +1,13 @@
+2011/11/20:
+	* Fix missing strsplit
+	* Fix rarity specifications
+	* Fix a couple leftover references to bag.*
+	* Add merging function (-t)
+	* A bit of display cleanup
+	* Add auto-updates
+	* Add way to close window
+	* Call this 0.2
+
 2011/11/19:
 	* Functional enough to be worth showing people.
 

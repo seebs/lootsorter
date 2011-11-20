@@ -7,6 +7,9 @@
 	* Add auto-updates
 	* Add way to close window
 	* Call this 0.2
+	* Add close button
+	* Save window position
+	* Call this 0.3
 
 2011/11/19:
 	* Functional enough to be worth showing people.

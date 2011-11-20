@@ -24,6 +24,13 @@ function ls.printf(fmt, ...)
   print(string.format(fmt or 'nil', ...))
 end
 
+function ls.variables_loaded(name)
+  if name == 'LootSorter' then
+    LootSorterAccount = LootSorterAccount or { window_x = 150, window_y = 150 }
+    ls.account_vars = LootSorterAccount
+  end
+end
+
 function ls.strsplit(s, p)
   local idx = string.find(s, p)
   if idx then
@@ -111,6 +118,10 @@ function ls.mousemove(...)
     local newx = ls.window_x + x - ls.event_x
     local newy = ls.window_y + y - ls.event_y
     ls.window:SetPoint("TOPLEFT", UIParent, "TOPLEFT", newx, newy)
+    if ls.account_vars then
+      ls.account_vars.window_x = newx
+      ls.account_vars.window_y = newy
+    end
   end
 end
 
@@ -126,15 +137,21 @@ function ls.makewindow()
     ls.window:SetVisible(true)
     return
   end
-  ls.item_lines = 20
+  ls.item_lines = 22
   ls.window = UI.CreateFrame("RiftWindow", "LootSorter", ls.ui)
   ls.window:SetWidth(800)
   ls.window:SetTitle("LootSorter")
+  ls.window:SetPoint("TOPLEFT", UIParent, "TOPLEFT", ls.account_vars and ls.account_vars.window_x or 150, ls.account_vars and ls.account_vars.window_y or 150)
 
   local l, t, r, b = ls.window:GetTrimDimensions()
 
+  ls.closebutton = UI.CreateFrame("RiftButton", "LootSorter", ls.window)
+  ls.closebutton:SetSkin("close")
+  ls.closebutton:SetPoint("TOPRIGHT", ls.window, "TOPRIGHT", r * -1 + 3, b + 2)
+  ls.closebutton.Event.LeftPress = function() ls.window:SetVisible(false) end
+
   ls.scrollbar = UI.CreateFrame("RiftScrollbar", "LootSorter", ls.window)
-  ls.scrollbar:SetPoint("TOPRIGHT", ls.window, "TOPRIGHT", -2 + r * -1, t + 80)
+  ls.scrollbar:SetPoint("TOPRIGHT", ls.window, "TOPRIGHT", -2 + r * -1, t + 40)
   ls.scrollbar:SetPoint("BOTTOMRIGHT", ls.window, "BOTTOMRIGHT", -2 + r * -1, -2 + b * -1)
   -- only active when there is scrolletry to do
   ls.scrollbar:SetEnabled(false)
@@ -153,8 +170,8 @@ function ls.makewindow()
   ls.heading = ls.makeitem(0)
   ls.heading.index = 0
   ls.heading.frame:SetBackgroundColor(0, 0, 0, 0)
-  ls.heading.frame:SetPoint("TOPLEFT", ls.window, "TOPLEFT", l + 2, t + 60)
-  ls.heading.frame:SetPoint("BOTTOMRIGHT", ls.window, "TOPRIGHT", -2 + (r * -1) - w, t + 78)
+  ls.heading.frame:SetPoint("TOPLEFT", ls.window, "TOPLEFT", l + 2, t + 20)
+  ls.heading.frame:SetPoint("BOTTOMRIGHT", ls.window, "TOPRIGHT", -2 + (r * -1) - w, t + 38)
   ls.makecolumns(ls.heading)
   ls.show_item(ls.heading, {}, true)
 
@@ -162,10 +179,10 @@ function ls.makewindow()
   for i = 1, ls.item_lines do
     ls.items[i] = ls.makeitem(i)
     ls.setgrey(ls.items[i].frame, i)
-    ls.items[i].frame:SetPoint("TOPLEFT", ls.window, "TOPLEFT", l + 2, t + 60 + (20 * i))
+    ls.items[i].frame:SetPoint("TOPLEFT", ls.window, "TOPLEFT", l + 2, t + 20 + (20 * i))
     ls.items[i].frame:SetPoint("BOTTOMRIGHT", ls.window, "TOPRIGHT",
     	-2 + (r * -1) - w,
-	t + (20 * i) + 78)
+	t + (20 * i) + 38)
     ls.makecolumns(ls.items[i])
   end
 end
@@ -368,7 +385,9 @@ function ls.reorder()
 end
 
 function ls.refresh()
-  ls.dump()
+  if ls.window and ls.window:GetVisible() then
+    ls.dump()
+  end
 end
 
 function ls.dump(filter)
@@ -513,5 +532,6 @@ ls.ui:SetVisible(false)
 
 table.insert(Event.Item.Slot, { ls.refresh, "LootSorter", "LootSorter refresh" })
 table.insert(Event.Item.Update, { ls.refresh, "LootSorter", "LootSorter refresh" })
+table.insert(Event.Addon.SavedVariables.Load.End, { ls.variables_loaded, "LootSorter", "variable loaded hook" })
 
 Library.LibGetOpt.makeslash("bc:C:Dehiq:rtvwx", "LootSorter", "ls", ls.slashcommand)

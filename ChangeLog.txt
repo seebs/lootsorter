@@ -14,6 +14,8 @@
 	* Call this 0.4
 	* Add icon display
 	* Add tooltips
+	* Fix tooltip display bug
+	* Add required-level display
 	* And call that 0.5
 
 2011/11/19:

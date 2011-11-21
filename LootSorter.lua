@@ -35,6 +35,7 @@ ls.columns = {
   { name = 'Icn', key = 'icon', width = 18, type = "Texture" },
   { name = 'Name', key = 'name', width = 200 },
   { name = 'Qty', key = 'qty', width = 70 },
+  { name = 'Level', key = 'level', width = 70 },
   { name = 'Rarity', key = 'rarity', width = 75 },
   { name = 'Location', key = 'loc', width = 100 },
   { name = 'Owner', key = 'owner', width = 150 },
@@ -61,7 +62,9 @@ function ls.mousein(idx, subframe, ...)
     local item_idx = idx + pos
     local item_name = ls.item_ordered[item_idx]
     if ls.item_list[item_name] and ls.item_list[item_name].type then
-      Command.Tooltip(ls.item_list[item_name].type)
+      -- sometimes Command.Tooltip throws spurious errors
+      local foo = function() Command.Tooltip(ls.item_list[item_name].type) end
+      pcall(foo)
     end
   end
 end
@@ -258,6 +261,23 @@ function ls.display_rarity(frame, item)
   frame:SetFontColor(r, g, b)
 end
 
+function ls.display_level(frame, item)
+  local x
+  local me = Inspect.Unit.Detail('player')
+  if item.requiredLevel then
+    x = tostring(item.requiredLevel)
+    if me and me.level and (me.level < item.requiredLevel) then
+      frame:SetFontColor(0.9, 0, 0)
+    else
+      frame:SetFontColor(0.98, 0.98, 0.98)
+    end
+  else
+    x = "--"
+    frame:SetFontColor(0.5, 0.5, 0.5)
+  end
+  frame:SetText(x)
+end
+
 function ls.display_qty(frame, item)
   local x
   if item.stackMax then
@@ -271,6 +291,7 @@ end
 
 ls.display_funcs = {
   icon = ls.display_icon,
+  level = ls.display_level,
   loc = ls.display_loc,
   qty = ls.display_qty,
   name = ls.display_name,
@@ -303,6 +324,23 @@ function ls.order_qty_calc(item)
     return 0
   end
 end
+
+function ls.order_level_calc(item)
+  if not item then
+    return -1
+  end
+  return item.requiredLevel or -1
+end
+
+function ls.order_level(a, b)
+  local acmp, bcmp
+  a = ls.item_list[a]
+  b = ls.item_list[b]
+  acmp = ls.order_level_calc(a)
+  bcmp = ls.order_level_calc(b)
+  return ls.order_generic(acmp, bcmp, true)
+end
+
 
 function ls.order_qty(a, b)
   local acmp, bcmp
@@ -353,6 +391,7 @@ ls.order_funcs = {
   loc = ls.order_loc,
   qty = ls.order_qty,
   name = ls.order_name,
+  level = ls.order_level,
   owner = ls.order_owner,
   rarity = ls.order_rarity,
 }

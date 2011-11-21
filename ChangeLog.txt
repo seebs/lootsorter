@@ -12,6 +12,9 @@
 	* Call this 0.3
 	* Move argument processing into LibBaggotry.
 	* Call this 0.4
+	* Add icon display
+	* Add tooltips
+	* And call that 0.5
 
 2011/11/19:
 	* Functional enough to be worth showing people.

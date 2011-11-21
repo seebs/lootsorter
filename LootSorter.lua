@@ -32,6 +32,7 @@ function ls.variables_loaded(name)
 end
 
 ls.columns = {
+  { name = 'Icn', key = 'icon', width = 18, type = "Texture" },
   { name = 'Name', key = 'name', width = 200 },
   { name = 'Qty', key = 'qty', width = 70 },
   { name = 'Rarity', key = 'rarity', width = 75 },
@@ -47,8 +48,26 @@ function ls.makecolumns(item)
     f:SetPoint("BOTTOMRIGHT", item.frame, "BOTTOMLEFT", xoff + v.width, 0)
     f:SetMouseMasking("limited")
     f.Event.LeftClick = function(...) ls.leftclick(item.index, v.key, ...) end
+    f.Event.MouseIn = function(...) ls.mousein(item.index, v.key, ...) end
+    f.Event.MouseOut = function(...) ls.mouseout(item.index, v.key, ...) end
     xoff = xoff + v.width + 5
   end
+end
+
+function ls.mousein(idx, subframe, ...)
+  -- ls.printf("mousein %d %s", idx or -1, subframe and tostring(subframe) or 'nil')
+  if idx then
+    local pos = math.floor(ls.scrollbar:GetPosition())
+    local item_idx = idx + pos
+    local item_name = ls.item_ordered[item_idx]
+    if ls.item_list[item_name] and ls.item_list[item_name].type then
+      Command.Tooltip(ls.item_list[item_name].type)
+    end
+  end
+end
+
+function ls.mouseout(idx, ...)
+  Command.Tooltip(nil)
 end
 
 function ls.makeitem(idx)
@@ -57,8 +76,14 @@ function ls.makeitem(idx)
   item.frame = UI.CreateFrame("Frame", "Item Frame", ls.window)
   item.frame.Event.LeftClick = function(...) ls.leftclick(idx, nil, ...) end
   item.subframes = {}
+  item.frame.Event.MouseIn = function(...) ls.mousein(idx, 'outer', ...) end
+  item.frame.Event.MouseOut = function(...) ls.mouseout(idx, 'outer', ...) end
   for i, v in ipairs(ls.columns) do
-    item.subframes[i] = UI.CreateFrame("Text", "Column", item.frame)
+    if idx == 0 then
+      item.subframes[i] = UI.CreateFrame("Text", "Column", item.frame)
+    else
+      item.subframes[i] = UI.CreateFrame(v.type or "Text", "Column", item.frame)
+    end
   end
   return item
 end
@@ -73,6 +98,7 @@ function ls.leftclick(idx, field, ...)
   ls.leftup(...)
   if idx == 0 then
     local func = ls.order_funcs[field]
+    -- if there's no order function, we don't care
     if func then
       if ls.order == func then
         ls.order_asc = not ls.order_asc
@@ -195,6 +221,18 @@ function ls.display_loc(frame, item)
   frame:SetFontColor(0.98, 0.98, 0.98)
 end
 
+function ls.display_icon(frame, item)
+  if not item then
+    return
+  end
+  if item.icon then
+    frame:SetTexture("Rift", item.icon)
+    frame:SetVisible(true)
+  else
+    frame:SetVisible(false)
+  end
+end
+
 function ls.display_name(frame, item)
   frame:SetText(item.name or "NO NAME")
   local r, g, b = lbag.rarity_color(item.rarity)
@@ -232,6 +270,7 @@ function ls.display_qty(frame, item)
 end
 
 ls.display_funcs = {
+  icon = ls.display_icon,
   loc = ls.display_loc,
   qty = ls.display_qty,
   name = ls.display_name,

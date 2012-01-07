@@ -147,6 +147,9 @@ function window_template:close()
   if remove_me then
     table.remove(ls.windows, remove_me)
   end
+  if self.editor then
+    self.editor:close()
+  end
   -- don't keep an old selection around
   self.selected = nil
   table.insert(ls.spare_windows, self)
@@ -220,10 +223,22 @@ function window_template:new()
   o.editbutton = UI.CreateFrame("RiftButton", "LootSorter", o.window)
   o.editbutton:SetText('EDIT')
   o.editbutton:SetPoint("TOPLEFT", o.window, "TOPLEFT", l + 60, t - 5)
-  o.edit_callback = function(filter, aux) ls.dump(o, filter) end
-  o.editbutton.Event.LeftPress = function() lbag.edit_filter(lbag.copy_filter_args(o.filter), ls.ui, o.edit_callback) end
+  o.edit_callback = function(filter, aux) o:editor_callback(filter, aux) end
+  o.editbutton.Event.LeftPress = function() ls.edit(o) end
 
   return o
+end
+
+function window_template:editor_callback(filter, aux)
+  if filter then
+    ls.dump(self, filter)
+  else
+    self.editor = nil
+  end
+end
+
+function ls.edit(window)
+  window.editor = lbag.edit_filter(lbag.copy_filter_args(window.filter), ls.ui, window.edit_callback)
 end
 
 function ls.display_loc(frame, item)
@@ -505,7 +520,7 @@ function ls.dump(window, newfilter)
       tostring(window), tostring(filter))
     return
   else
-    filter = lbag.filter(window.filter)
+    filter = lbag.filter(window.filter, true)
   end
   window.item_list = filter:find()
 
@@ -549,6 +564,13 @@ function ls.slashcommand(args)
     return
   end
 
+  if args['f'] then
+    local filter = lbag.load_filter(args['f'])
+    if filter then
+      args = filter
+    end
+  end
+
   ls.dump(nil, args)
 end
 
@@ -558,4 +580,4 @@ table.insert(Event.Item.Slot, { ls.refresh, "LootSorter", "LootSorter refresh" }
 table.insert(Event.Item.Update, { ls.refresh, "LootSorter", "LootSorter refresh" })
 table.insert(Event.Addon.SavedVariables.Load.End, { ls.variables_loaded, "LootSorter", "variable loaded hook" })
 
-Library.LibGetOpt.makeslash(lbag.filter():argstring() .. "v", "LootSorter", "ls", ls.slashcommand)
+Library.LibGetOpt.makeslash(lbag.filter():argstring() .. "f:v", "LootSorter", "ls", ls.slashcommand)

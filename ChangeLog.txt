@@ -8,6 +8,7 @@
 	* Add edit window (although it doesn't work yet)
 	* Change to storing filters in argument-list format until
 	  actually refreshing them.
+	* Edit window partially working.
 
 2011/12/12:
 	* Update version #

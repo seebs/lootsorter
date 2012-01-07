@@ -19,11 +19,15 @@ Options:
 		default is self only.
 	-c category
 		Show only items in category
-	-h
-		hide (closes window)
 	-q quality
 		Show items of quality; default relation is >= rather
 		than ==.
+
+	-f filter
+		Selects a named filter to work with; filters can
+		be edited (slightly) and saved.  Right now, there's
+		no real tools for editing the bulk of the filter,
+		but it's being worked on.
 
 Words that aren't attached to options:
 	If there's no colons, it's treated as a name match; note

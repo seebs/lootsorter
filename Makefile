@@ -1,6 +1,6 @@
-VERSION=0.5
+VERSION=0.7
 PACKAGE=LootSorter
-EMBEDS=getopt libbaggotry
+EMBEDS=getopt libbaggotry libaccounts libdraggable
 
 include ../addon.mk
 

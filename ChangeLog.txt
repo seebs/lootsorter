@@ -1,3 +1,19 @@
+2012/01/07:
+	* Support multiple simultaneous windows
+	* Groundwork for being able to save multiple windows and
+	  reopen them, etc.
+	* Make scrollbars a little more stable.
+	* Lots of miscellaneous fixes
+	* Call this 0.7
+	* Add edit window (although it doesn't work yet)
+	* Change to storing filters in argument-list format until
+	  actually refreshing them.
+
+2011/12/12:
+	* Update version #
+	* Add LibAccounts
+	* Fix display bug with combined totals of unstackables
+
 2011/11/20:
 	* Fix missing strsplit
 	* Fix rarity specifications

@@ -7,8 +7,9 @@ Email = "seebs@seebs.net"
 Dependencies = {
 	LibGetOpt = { "required", "before" },
 	LibBaggotry  = { "required", "before" },
+	LibDraggable  = { "required", "before" },
 }
-Embed = { LibGetOpt = true, LibBaggotry = true }
+Embed = { LibGetOpt = true, LibBaggotry = true, LibAccounts = true, LibDraggable = true }
 
 Name = {
   English = "LootSorter",

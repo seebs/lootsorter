@@ -6,6 +6,20 @@
 
      (Answer:  Actually, there's five, ejvyz.)
 
+     ls.windows = {
+       { window =,
+	 filter =,
+	 selected =,
+	 order =,
+	 order_asc =,
+       }
+       [...]
+     }
+     ls.spare_windows = {
+       window,
+       ...
+     }
+
 ]]--
 
 local ls = {}
@@ -13,12 +27,9 @@ ls.version = "VERSION"
 local lbag = Library.LibBaggotry
 LootSorter = ls
 
-ls.item_list = {}
-ls.item_count = 0
-ls.item_ordered = {}
-ls.order_asc = true
-ls.selected = nil
-ls.current_filter = nil
+ls.item_lines = 22
+ls.windows = {}
+ls.spare_windows = {}
 
 function ls.printf(fmt, ...)
   print(string.format(fmt or 'nil', ...))
@@ -41,46 +52,46 @@ ls.columns = {
   { name = 'Owner', key = 'owner', width = 150 },
 }
 
-function ls.makecolumns(item)
+function ls.makecolumns(window, item)
   local xoff = 0
   for i, v in ipairs(ls.columns) do
     local f = item.subframes[i]
     f:SetPoint("TOPLEFT", item.frame, "TOPLEFT", xoff, 0)
     f:SetPoint("BOTTOMRIGHT", item.frame, "BOTTOMLEFT", xoff + v.width, 0)
     f:SetMouseMasking("limited")
-    f.Event.LeftClick = function(...) ls.leftclick(item.index, v.key, ...) end
-    f.Event.MouseIn = function(...) ls.mousein(item.index, v.key, ...) end
-    f.Event.MouseOut = function(...) ls.mouseout(item.index, v.key, ...) end
+    f.Event.LeftClick = function(...) ls.leftclick(window, item.index, v.key, ...) end
+    f.Event.MouseIn = function(...) ls.mousein(window, item.index, v.key, ...) end
+    f.Event.MouseOut = function(...) ls.mouseout(window, item.index, v.key, ...) end
     xoff = xoff + v.width + 5
   end
 end
 
-function ls.mousein(idx, subframe, ...)
+function ls.mousein(window, idx, subframe, ...)
   -- ls.printf("mousein %d %s", idx or -1, subframe and tostring(subframe) or 'nil')
   if idx then
-    local pos = math.floor(ls.scrollbar:GetPosition())
+    local pos = math.floor(window.scrollbar:GetPosition())
     local item_idx = idx + pos
-    local item_name = ls.item_ordered[item_idx]
-    if ls.item_list[item_name] and ls.item_list[item_name].type then
+    local item_name = window.item_ordered[item_idx]
+    if window.item_list[item_name] and window.item_list[item_name].type then
       -- sometimes Command.Tooltip throws spurious errors
-      local foo = function() Command.Tooltip(ls.item_list[item_name].type) end
+      local foo = function() Command.Tooltip(window.item_list[item_name].type) end
       pcall(foo)
     end
   end
 end
 
-function ls.mouseout(idx, ...)
+function ls.mouseout(window, idx, ...)
   Command.Tooltip(nil)
 end
 
-function ls.makeitem(idx)
+function ls.makeitem(window, idx)
   local item = {}
   item.index = idx
-  item.frame = UI.CreateFrame("Frame", "Item Frame", ls.window)
-  item.frame.Event.LeftClick = function(...) ls.leftclick(idx, nil, ...) end
+  item.frame = UI.CreateFrame("Frame", "Item Frame", window.window)
+  item.frame.Event.LeftClick = function(...) ls.leftclick(window, idx, nil, ...) end
   item.subframes = {}
-  item.frame.Event.MouseIn = function(...) ls.mousein(idx, 'outer', ...) end
-  item.frame.Event.MouseOut = function(...) ls.mouseout(idx, 'outer', ...) end
+  item.frame.Event.MouseIn = function(...) ls.mousein(window, idx, 'outer', ...) end
+  item.frame.Event.MouseOut = function(...) ls.mouseout(window, idx, 'outer', ...) end
   for i, v in ipairs(ls.columns) do
     if idx == 0 then
       item.subframes[i] = UI.CreateFrame("Text", "Column", item.frame)
@@ -96,115 +107,123 @@ function ls.setgrey(frame, count)
   frame:SetBackgroundColor(grey, grey, grey, 0.4)
 end
 
-function ls.leftclick(idx, field, ...)
-  -- try to prevent confusions
-  ls.leftup(...)
+function ls.leftclick(window, idx, field, ...)
   if idx == 0 then
     local func = ls.order_funcs[field]
     -- if there's no order function, we don't care
     if func then
-      if ls.order == func then
-        ls.order_asc = not ls.order_asc
+      if window.order == func then
+        window.order_asc = not window.order_asc
       else
-        ls.order_asc = true
-	ls.order = func
+        window.order_asc = true
+	window.order = func
       end
-      ls.reorder()
-      ls.show_items()
+      ls.reorder(window)
+      ls.show_items(window)
     end
   elseif idx then
-    local pos = math.floor(ls.scrollbar:GetPosition())
-    ls.selected = idx + pos
-    ls.show_items()
+    local pos = math.floor(window.scrollbar:GetPosition())
+    window.selected = idx + pos
+    ls.show_items(window)
   end
 end
 
 -- handle dragging
-function ls.leftdown(...)
-  ls.dragging = true
-  ls.window_x = ls.window:GetLeft()
-  ls.window_y = ls.window:GetTop()
+
+function ls.mousemove(window, x, y)
+  ls.account_vars.window_x = x
+  ls.account_vars.window_y = y
 end
 
-function ls.mousemove(...)
-  if not ls.dragging then
-    return
-  end
-  local event, x, y = ...
-  if not ls.event_x then
-    ls.event_x = x
-    ls.event_y = y
-  else
-    local newx = ls.window_x + x - ls.event_x
-    local newy = ls.window_y + y - ls.event_y
-    ls.window:SetPoint("TOPLEFT", UIParent, "TOPLEFT", newx, newy)
-    if ls.account_vars then
-      ls.account_vars.window_x = newx
-      ls.account_vars.window_y = newy
+local window_template = {}
+
+function window_template:close()
+  remove_me = nil
+  for idx, window in ipairs(ls.windows) do
+    if window == self then
+      remove_me = idx
     end
   end
-end
-
-function ls.leftup(...)
-  ls.dragging = false
-  ls.event_x = nil
-  ls.event_y = nil
-end
-
-function ls.makewindow()
-  if ls.window then
-    ls.ui:SetVisible(true)
-    ls.window:SetVisible(true)
-    return
+  if remove_me then
+    table.remove(ls.windows, remove_me)
   end
-  ls.item_lines = 22
-  ls.window = UI.CreateFrame("RiftWindow", "LootSorter", ls.ui)
-  ls.window:SetWidth(800)
-  ls.window:SetTitle("LootSorter")
-  ls.window:SetPoint("TOPLEFT", UIParent, "TOPLEFT", ls.account_vars and ls.account_vars.window_x or 150, ls.account_vars and ls.account_vars.window_y or 150)
+  -- don't keep an old selection around
+  self.selected = nil
+  table.insert(ls.spare_windows, self)
+  self.window:SetVisible(false)
+end
 
-  local l, t, r, b = ls.window:GetTrimDimensions()
+function window_template:get()
+  if ls.spare_windows[1] then
+    local win = ls.spare_windows[1]
+    table.remove(ls.spare_windows, 1)
+    return win
+  else
+    return window_template:new()
+  end
+end
 
-  ls.closebutton = UI.CreateFrame("RiftButton", "LootSorter", ls.window)
-  ls.closebutton:SetSkin("close")
-  ls.closebutton:SetPoint("TOPRIGHT", ls.window, "TOPRIGHT", r * -1 + 3, b + 2)
-  ls.closebutton.Event.LeftPress = function() ls.window:SetVisible(false) end
+function window_template:new()
+  local o = {
+    order = ls.order_name,
+    order_asc = true
+  }
+  setmetatable(o, self)
+  self.__index = self
 
-  ls.scrollbar = UI.CreateFrame("RiftScrollbar", "LootSorter", ls.window)
-  ls.scrollbar:SetPoint("TOPRIGHT", ls.window, "TOPRIGHT", -2 + r * -1, t + 40)
-  ls.scrollbar:SetPoint("BOTTOMRIGHT", ls.window, "BOTTOMRIGHT", -2 + r * -1, -2 + b * -1)
+  o.window = UI.CreateFrame("RiftWindow", "LootSorter", ls.ui)
+  o.window:SetWidth(800)
+  o.window:SetTitle("LootSorter")
+  o.window:SetPoint("TOPLEFT", UIParent, "TOPLEFT", ls.account_vars and ls.account_vars.window_x or 150, ls.account_vars and ls.account_vars.window_y or 150)
+
+  local l, t, r, b = o.window:GetTrimDimensions()
+
+  o.closebutton = UI.CreateFrame("RiftButton", "LootSorter", o.window)
+  o.closebutton:SetSkin("close")
+  o.closebutton:SetPoint("TOPRIGHT", o.window, "TOPRIGHT", r * -1 + 3, b + 2)
+  o.closebutton.Event.LeftPress = function() o:close() end
+
+  o.scrollbar = UI.CreateFrame("RiftScrollbar", "LootSorter", o.window)
+  o.scrollbar:SetPoint("TOPRIGHT", o.window, "TOPRIGHT", -2 + r * -1, t + 40)
+  o.scrollbar:SetPoint("BOTTOMRIGHT", o.window, "BOTTOMRIGHT", -2 + r * -1, -2 + b * -1)
   -- only active when there is scrolletry to do
-  ls.scrollbar:SetEnabled(false)
-  ls.scrollbar:SetRange(0, 1)
-  ls.scrollbar:SetPosition(0)
-  ls.scrollbar.Event.ScrollbarChange = ls.show_items
-  ls.window.Event.WheelBack = function() ls.scrollbar:Nudge(3) end
-  ls.window.Event.WheelForward = function() ls.scrollbar:Nudge(-3) end
-  local w = ls.scrollbar:GetWidth()
+  o.scrollbar:SetEnabled(false)
+  o.scrollbar:SetRange(0, 1)
+  o.scrollbar:SetPosition(0)
+  o.scrollbar.Event.ScrollbarChange = function() ls.show_items(o) end
+  o.window.Event.WheelBack = function() o.scrollbar:Nudge(3) end
+  o.window.Event.WheelForward = function() o.scrollbar:Nudge(-3) end
+  local w = o.scrollbar:GetWidth()
 
-  ls.window:GetContent():SetMouseMasking("full")
-  ls.window:GetBorder().Event.LeftDown = ls.leftdown
-  ls.window:GetBorder().Event.MouseMove = ls.mousemove
-  ls.window:GetBorder().Event.LeftUp = ls.leftup
+  o.window:GetContent():SetMouseMasking("full")
+  Library.LibDraggable.draggify(o.window, o.mousemove)
 
-  ls.heading = ls.makeitem(0)
-  ls.heading.index = 0
-  ls.heading.frame:SetBackgroundColor(0, 0, 0, 0)
-  ls.heading.frame:SetPoint("TOPLEFT", ls.window, "TOPLEFT", l + 2, t + 20)
-  ls.heading.frame:SetPoint("BOTTOMRIGHT", ls.window, "TOPRIGHT", -2 + (r * -1) - w, t + 38)
-  ls.makecolumns(ls.heading)
-  ls.show_item(ls.heading, {}, true)
+  o.heading = ls.makeitem(o, 0)
+  o.heading.index = 0
+  o.heading.frame:SetBackgroundColor(0, 0, 0, 0)
+  o.heading.frame:SetPoint("TOPLEFT", o.window, "TOPLEFT", l + 2, t + 20)
+  o.heading.frame:SetPoint("BOTTOMRIGHT", o.window, "TOPRIGHT", -2 + (r * -1) - w, t + 38)
+  ls.makecolumns(o, o.heading)
+  ls.show_item(o.heading, {}, true)
 
-  ls.items = {}
+  o.items = {}
   for i = 1, ls.item_lines do
-    ls.items[i] = ls.makeitem(i)
-    ls.setgrey(ls.items[i].frame, i)
-    ls.items[i].frame:SetPoint("TOPLEFT", ls.window, "TOPLEFT", l + 2, t + 20 + (20 * i))
-    ls.items[i].frame:SetPoint("BOTTOMRIGHT", ls.window, "TOPRIGHT",
+    o.items[i] = ls.makeitem(o, i)
+    ls.setgrey(o.items[i].frame, i)
+    o.items[i].frame:SetPoint("TOPLEFT", o.window, "TOPLEFT", l + 2, t + 20 + (20 * i))
+    o.items[i].frame:SetPoint("BOTTOMRIGHT", o.window, "TOPRIGHT",
     	-2 + (r * -1) - w,
 	t + (20 * i) + 38)
-    ls.makecolumns(ls.items[i])
+    ls.makecolumns(o, o.items[i])
   end
+
+  o.editbutton = UI.CreateFrame("RiftButton", "LootSorter", o.window)
+  o.editbutton:SetText('EDIT')
+  o.editbutton:SetPoint("TOPLEFT", o.window, "TOPLEFT", l + 60, t - 5)
+  o.edit_callback = function(filter, aux) ls.dump(o, filter) end
+  o.editbutton.Event.LeftPress = function() lbag.edit_filter(lbag.copy_filter_args(o.filter), ls.ui, o.edit_callback) end
+
+  return o
 end
 
 function ls.display_loc(frame, item)
@@ -244,9 +263,8 @@ end
 
 function ls.display_owner(frame, item)
   local owner, suffix
-  owner = item._charspec or "--"
-  suffix = string.match(owner, '.*/(.*)')
-  owner = suffix or owner
+  owner = item._character or "--"
+  owner = string.upper(string.sub(owner, 1, 1)) .. string.sub(owner, 2)
   frame:SetText(owner)
   if owner == '--' then
     frame:SetFontColor(0.5, 0.5, 0.5)
@@ -280,8 +298,8 @@ end
 
 function ls.display_qty(frame, item)
   local x
-  if item.stackMax then
-    x = string.format("%d/%d", item.stack, item.stackMax)
+  if item.stackMax or (item.stack and item.stack > 1) then
+    x = string.format("%d/%d", item.stack, item.stackMax or 1)
   else
     x = ""
   end
@@ -299,7 +317,7 @@ ls.display_funcs = {
   rarity = ls.display_rarity,
 }
 
-function ls.order_generic(acmp, bcmp, invert)
+function ls.order_generic(window, acmp, bcmp, invert)
   if acmp == bcmp then
     return false
   end
@@ -308,9 +326,9 @@ function ls.order_generic(acmp, bcmp, invert)
     c = not c
   end
   if c then
-    return ls.order_asc
+    return window.order_asc
   else
-    return not ls.order_asc
+    return not window.order_asc
   end
 end
 
@@ -332,59 +350,59 @@ function ls.order_level_calc(item)
   return item.requiredLevel or -1
 end
 
-function ls.order_level(a, b)
+function ls.order_level(window, a, b)
   local acmp, bcmp
-  a = ls.item_list[a]
-  b = ls.item_list[b]
+  a = window.item_list[a]
+  b = window.item_list[b]
   acmp = ls.order_level_calc(a)
   bcmp = ls.order_level_calc(b)
-  return ls.order_generic(acmp, bcmp, true)
+  return ls.order_generic(window, acmp, bcmp, true)
 end
 
 
-function ls.order_qty(a, b)
+function ls.order_qty(window, a, b)
   local acmp, bcmp
-  a = ls.item_list[a]
-  b = ls.item_list[b]
-  acmp = ls.order_qty_calc(a)
-  bcmp = ls.order_qty_calc(b)
-  return ls.order_generic(acmp, bcmp, true)
+  local ai = window.item_list[a]
+  local bi = window.item_list[b]
+  acmp = ls.order_qty_calc(ai)
+  bcmp = ls.order_qty_calc(bi)
+  return ls.order_generic(window, acmp, bcmp, true)
 end
 
-function ls.order_owner(a, b)
+function ls.order_owner(window, a, b)
   local acmp, bcmp
-  a = ls.item_list[a]
-  b = ls.item_list[b]
-  acmp = a and (a._charspec or "") or ""
-  bcmp = b and (b._charspec or "") or ""
-  return ls.order_generic(acmp, bcmp)
+  a = window.item_list[a]
+  b = window.item_list[b]
+  acmp = a and (a._character or "") or ""
+  bcmp = b and (b._character or "") or ""
+  return ls.order_generic(window, acmp, bcmp)
 end
 
-function ls.order_name(a, b)
+function ls.order_name(window, a, b)
   local acmp, bcmp
-  a = ls.item_list[a]
-  b = ls.item_list[b]
+  a = window.item_list[a]
+  b = window.item_list[b]
   acmp = a and (a.name or "") or ""
   bcmp = b and (b.name or "") or ""
-  return ls.order_generic(acmp, bcmp)
+  return ls.order_generic(window, acmp, bcmp)
 end
 
-function ls.order_rarity(a, b)
+function ls.order_rarity(window, a, b)
   local acmp, bcmp
-  a = ls.item_list[a]
-  b = ls.item_list[b]
+  a = window.item_list[a]
+  b = window.item_list[b]
   acmp = a and (lbag.rarity_p(a.rarity)) or 0
   bcmp = b and (lbag.rarity_p(b.rarity)) or 0
-  return ls.order_generic(acmp, bcmp, true)
+  return ls.order_generic(window, acmp, bcmp, true)
 end
 
-function ls.order_loc(a, b)
+function ls.order_loc(window, a, b)
   local acmp, bcmp
-  a = ls.item_list[a]
-  b = ls.item_list[b]
+  a = window.item_list[a]
+  b = window.item_list[b]
   acmp = a and (a._slotspec) or ""
   bcmp = b and (b._slotspec) or ""
-  return ls.order_generic(acmp, bcmp)
+  return ls.order_generic(window, acmp, bcmp)
 end
 
 ls.order_funcs = {
@@ -421,88 +439,106 @@ function ls.show_item(frame, item, heading)
   frame.frame:SetVisible(true)
 end
 
-function ls.show_items()
-  ls.makewindow()
-
+function ls.show_items(window)
   local max
-  local pos = math.floor(ls.scrollbar:GetPosition())
+  local pos = math.floor(window.scrollbar:GetPosition())
 
   for i = 1, ls.item_lines do
     local item_idx = i + pos
-    local item_name = ls.item_ordered[item_idx]
+    local item_name = window.item_ordered[item_idx]
     if item_name then
-      local item = ls.item_list[item_name]
+      local item = window.item_list[item_name]
       if not item then
 	ls.printf("Trying to look at pos %d out of %d, got %s",
-	  item_idx, ls.item_count, item_name or "nil")
+	  item_idx, window.item_count, item_name or "nil")
       else
-        ls.show_item(ls.items[i], item)
+        ls.show_item(window.items[i], item)
       end
-      if item_idx == ls.selected then
-        ls.items[i].frame:SetBackgroundColor(0.4, 0.4, 0.2, 0.4)
+      if item_idx == window.selected then
+        window.items[i].frame:SetBackgroundColor(0.4, 0.4, 0.2, 0.4)
       else
-        ls.setgrey(ls.items[i].frame, item_idx)
+        ls.setgrey(window.items[i].frame, item_idx)
       end
     else
-      ls.items[i].frame:SetVisible(false)
+      window.items[i].frame:SetVisible(false)
+    end
+  end
+  window.window:SetVisible(true)
+end
+
+function ls.reorder(window)
+  local func = nil
+  if window.order then
+    func = function(...) return window.order(window, ...) end
+  end
+  table.sort(window.item_ordered, func)
+end
+
+function ls.refresh()
+  for _, window in ipairs(ls.windows) do
+    if window.window:GetVisible() then
+      ls.dump(window)
     end
   end
 end
 
-function ls.reorder()
-  table.sort(ls.item_ordered, ls.order)
-end
-
-function ls.refresh()
-  if ls.window and ls.window:GetVisible() then
-    ls.dump()
+function ls.dump(window, newfilter)
+  local filter
+  if not window then
+    for _, win in pairs(ls.windows) do
+      if win.filter == newfilter then
+        window = win
+      end
+    end
+    if not window then
+      window = window_template:get()
+      table.insert(ls.windows, window)
+    end
+    if window and newfilter then
+      window.filter = newfilter
+    end
+  elseif newfilter then
+    window.filter = newfilter
   end
-end
-
-function ls.dump(filter)
-  if filter then
-    ls.current_filter = filter
+  if not window.filter then
+    ls.printf("ls.dump(%s, %s): no window.filter",
+      tostring(window), tostring(filter))
+    return
   else
-    filter = ls.current_filter
+    filter = lbag.filter(window.filter)
   end
-  ls.item_list = filter:find()
-  if ls.combine_totals then
-    ls.item_list = lbag.merge_items(ls.item_list)
-  end
-  ls.item_count = 0
-  ls.item_ordered = {}
-  for k, v in pairs(ls.item_list) do
-    ls.item_count = ls.item_count + 1
-    table.insert(ls.item_ordered, k)
-  end
-  ls.reorder()
+  window.item_list = filter:find()
 
-  -- ensure window is available
-  ls.makewindow()
+  window.item_count = 0
+  window.item_ordered = {}
+  for k, v in pairs(window.item_list) do
+    window.item_count = window.item_count + 1
+    table.insert(window.item_ordered, k)
+  end
+  ls.reorder(window)
 
-  local max = ls.item_count - ls.item_lines
-  local _, sbmax = ls.scrollbar:GetRange()
-  local relative = ls.scrollbar:GetPosition() / sbmax
-  -- ls.printf("relative position: %d/%d => %f", ls.scrollbar:GetPosition(), sbmax, relative)
+  local max = window.item_count - ls.item_lines
+  local _, sbmax = window.scrollbar:GetRange()
+  local relative = window.scrollbar:GetPosition() / sbmax
+  -- ls.printf("relative position: %d/%d => %f", window.scrollbar:GetPosition(), sbmax, relative)
   if relative > 1 then
     relative = 1
   end
   if max > 0 then
-    ls.scrollbar:SetEnabled(true)
-    ls.scrollbar:SetRange(0, max)
-    ls.scrollbar:SetThickness(ls.item_lines)
+    window.scrollbar:SetEnabled(true)
+    window.scrollbar:SetRange(0, max)
+    window.scrollbar:SetThickness(ls.item_lines)
   else
     max = 0
-    ls.scrollbar:SetEnabled(false)
-    ls.scrollbar:SetRange(0, 1)
-    ls.scrollbar:SetThickness(1)
+    window.scrollbar:SetEnabled(false)
+    window.scrollbar:SetRange(0, 1)
+    window.scrollbar:SetThickness(1)
   end
-  ls.scrollbar:SetPosition(math.floor(relative * max))
-  ls.show_items()
+  window.scrollbar:SetPosition(math.floor((relative * max) + 0.5))
+  ls.show_items(window)
 end
 
 function ls.slashcommand(args)
-  local filter = lbag.filter()
   local dump = false
   if not args then
     return
@@ -512,36 +548,14 @@ function ls.slashcommand(args)
     ls.printf("version %s", ls.version)
     return
   end
-  if args['h'] then
-    ls.window:SetVisible(false)
-    return
-  end
-  if args['t'] then
-    ls.combine_totals = true
-  else
-    ls.combine_totals = false
-  end
-  args['t'] = nil
 
-  if args['D'] then
-    dump = true
-    args['D'] = nil
-  end
-
-  filter:from_args(args)
-
-  if dump then
-    filter:dump()
-    return
-  end
-  ls.dump(filter)
+  ls.dump(nil, args)
 end
 
 ls.ui = UI.CreateContext("LootSorter")
-ls.ui:SetVisible(false)
 
 table.insert(Event.Item.Slot, { ls.refresh, "LootSorter", "LootSorter refresh" })
 table.insert(Event.Item.Update, { ls.refresh, "LootSorter", "LootSorter refresh" })
 table.insert(Event.Addon.SavedVariables.Load.End, { ls.variables_loaded, "LootSorter", "variable loaded hook" })
 
-Library.LibGetOpt.makeslash(lbag.filter():argstring() .. "Dhtv", "LootSorter", "ls", ls.slashcommand)
+Library.LibGetOpt.makeslash(lbag.filter():argstring() .. "v", "LootSorter", "ls", ls.slashcommand)

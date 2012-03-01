@@ -25,6 +25,7 @@
 local ls = {}
 ls.version = "VERSION"
 local lbag = Library.LibBaggotry
+local filt = Library.LibEnfiltrate
 LootSorter = ls
 
 ls.item_lines = 22
@@ -147,9 +148,6 @@ function window_template:close()
   if remove_me then
     table.remove(ls.windows, remove_me)
   end
-  if self.editor then
-    self.editor:close()
-  end
   -- don't keep an old selection around
   self.selected = nil
   table.insert(ls.spare_windows, self)
@@ -220,25 +218,7 @@ function window_template:new()
     ls.makecolumns(o, o.items[i])
   end
 
-  o.editbutton = UI.CreateFrame("RiftButton", "LootSorter", o.window)
-  o.editbutton:SetText('EDIT')
-  o.editbutton:SetPoint("TOPLEFT", o.window, "TOPLEFT", l + 60, t - 5)
-  o.edit_callback = function(filter, aux) o:editor_callback(filter, aux) end
-  o.editbutton.Event.LeftPress = function() ls.edit(o) end
-
   return o
-end
-
-function window_template:editor_callback(filter, aux)
-  if filter then
-    ls.dump(self, filter)
-  else
-    self.editor = nil
-  end
-end
-
-function ls.edit(window)
-  window.editor = lbag.edit_filter(lbag.copy_filter_args(window.filter), ls.ui, window.edit_callback)
 end
 
 function ls.display_loc(frame, item)
@@ -498,7 +478,6 @@ function ls.refresh()
 end
 
 function ls.dump(window, newfilter)
-  local filter
   if not window then
     for _, win in pairs(ls.windows) do
       if win.filter == newfilter then
@@ -519,10 +498,8 @@ function ls.dump(window, newfilter)
     ls.printf("ls.dump(%s, %s): no window.filter",
       tostring(window), tostring(filter))
     return
-  else
-    filter = lbag.filter(window.filter, true)
   end
-  window.item_list = filter:find()
+  window.item_list = lbag.expand(window.filter)
 
   window.item_count = 0
   window.item_ordered = {}
@@ -555,23 +532,44 @@ end
 
 function ls.slashcommand(args)
   local dump = false
+  local temporary = false
+  local created = false
   if not args then
     return
   end
 
-  if args['v'] then
+  if args.v then
     ls.printf("version %s", ls.version)
     return
   end
 
-  if args['f'] then
-    local filter = lbag.load_filter(args['f'])
-    if filter then
-      args = filter
+  if args.f then
+    local filter = filt.Filter:load(args.f, 'LootSorter')
+    if not filter then
+      filter = filt.Filter:new(args.f, 'item', 'LootSorter')
+      created = true
+    end
+    args.f = nil
+  else
+    filter = filt.Filter:new(nil, 'item', 'LootSorter')
+    temporary = true
+  end
+
+  local changed = false
+  if lbag.apply_args(filter, args) then changed = true end
+  if filter:apply_args(args, true) then changed = true end
+  if changed then
+    if not temporary then
+      filter:save()
+    end
+  else
+    if created then
+      ls.printf("Found no filter named '%s'.", filter.name)
+      return
     end
   end
 
-  ls.dump(nil, args)
+  ls.dump(nil, filter)
 end
 
 ls.ui = UI.CreateContext("LootSorter")
@@ -580,4 +578,4 @@ table.insert(Event.Item.Slot, { ls.refresh, "LootSorter", "LootSorter refresh" }
 table.insert(Event.Item.Update, { ls.refresh, "LootSorter", "LootSorter refresh" })
 table.insert(Event.Addon.SavedVariables.Load.End, { ls.variables_loaded, "LootSorter", "variable loaded hook" })
 
-Library.LibGetOpt.makeslash(lbag.filter():argstring() .. "f:v", "LootSorter", "ls", ls.slashcommand)
+Library.LibGetOpt.makeslash(filt.Filter:argstring() .. lbag.argstring() .. "f:v", "LootSorter", "ls", ls.slashcommand)

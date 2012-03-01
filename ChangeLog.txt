@@ -1,3 +1,10 @@
+2012/02/28:
+	* Remove edit window stuff (since it's not working)
+	* Rebuild to work with new LibEnfiltrate stuff.
+
+2012/01/08:
+	* Make edit window pin itself to the parent unless dragged around.
+
 2012/01/07:
 	* Support multiple simultaneous windows
 	* Groundwork for being able to save multiple windows and
